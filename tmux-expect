@@ -1,0 +1,39 @@
+#!/bin/bash
+
+if [[ $# == 3 ]]; then
+	PANE=$1
+	PROMPT=$2
+	RESPONSE=$3
+else
+	PANE=`tmux list-panes -a -F "#{pane_id} #{window_index}: #{window_name}" | while read a b; do echo \"${a}\" \"${b}\"; done |
+	      xargs dialog --erase-on-exit --stdout --menu "select tmux pane" 0 0 0`
+	[[ -z $PANE ]] && exit 1
+
+	IFS=""
+	echo -n "Type the prompt to wait for (followed by ENTER): "
+	read PROMPT
+	[[ -z $PROMPT ]] && exit 1
+
+	echo -n "Type the keys to respond with (followed by ENTER): "
+	read RESPONSE
+	[[ -z $RESPONSE ]] && exit 1
+fi
+
+RESPONSE=$(echo -n "$RESPONSE"|hexdump -ve '"\\" "x" 1/1 "%02x"')
+
+SCRIPT=`mktemp`
+
+cat << __END > $SCRIPT
+while {1} {
+	expect {
+		"$PROMPT"	{sleep 0.1; send "$RESPONSE"}
+	}
+}
+__END
+
+tmux pipe-pane -IO -t "$PANE" "expect $SCRIPT"
+echo "waiting for \"$PROMPT\" in pane "$PANE", responding with (hex): $RESPONSE"
+echo "press ENTER to finish"
+read
+tmux pipe-pane -IO -t "$PANE" 
+
